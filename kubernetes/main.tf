@@ -29,7 +29,8 @@ locals {
   resource_group_name   = "rg-${var.app_name}"
   keyvault_name         = "kv-${var.app_name}"
   aks_name              = "aks-${var.app_name}"
-  app_registration_name = "aks-${var.app_name}-service-principal"
+  # app_registration_name = "aks-${var.app_name}-service-principal"
+  identity_name         = "aks-identity"
   service_account_name  = "workload-identity-sa"
 }
 
@@ -58,8 +59,9 @@ provider "kubernetes" {
 
 ### App Registration for the Workload Identity
 
-data "azuread_application" "default" {
-  display_name = local.app_registration_name
+data "azurerm_user_assigned_identity" "default" {
+  name = local.identity_name
+  resource_group_name = local.resource_group_name
 }
 
 resource "kubernetes_service_account" "default" {
@@ -67,10 +69,7 @@ resource "kubernetes_service_account" "default" {
     name      = local.service_account_name
     namespace = var.aks_namespace
     annotations = {
-      "azure.workload.identity/client-id" = data.azuread_application.default.application_id
-    }
-    labels = {
-      "azure.workload.identity/use" : "true"
+      "azure.workload.identity/client-id" = data.azurerm_user_assigned_identity.default.client_id
     }
   }
 }
@@ -81,6 +80,9 @@ resource "kubernetes_pod" "quick_start" {
   metadata {
     name      = "quick-start"
     namespace = var.aks_namespace
+    labels = {
+      "azure.workload.identity/use" : "true"
+    }
   }
 
   spec {
@@ -102,6 +104,7 @@ resource "kubernetes_pod" "quick_start" {
     node_selector = {
       "kubernetes.io/os" : "linux"
     }
+    
   }
 
   depends_on = [

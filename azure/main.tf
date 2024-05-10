@@ -55,6 +55,7 @@ resource "azurerm_kubernetes_cluster" "default" {
   node_resource_group = "rg-k8s-${local.app_name}"
 
   oidc_issuer_enabled = true
+  workload_identity_enabled = true
 
   default_node_pool {
     name       = local.aks_namespace
@@ -72,24 +73,40 @@ resource "azurerm_kubernetes_cluster" "default" {
 
 ### Azure Active Directory
 
-resource "azuread_application" "default" {
-  display_name = "aks-${local.app_name}-service-principal"
+# resource "azuread_application" "default" {
+#   display_name = "aks-${local.app_name}-service-principal"
+# }
+
+# resource "azuread_service_principal" "default" {
+#   application_id               = azuread_application.default.application_id
+#   app_role_assignment_required = false
+# }
+
+# resource "azuread_application_federated_identity_credential" "default" {
+#   application_object_id = azuread_application.default.object_id
+#   display_name          = "kubernetes-federated-credential"
+#   description           = "Kubernetes service account federated credential"
+#   audiences             = ["api://AzureADTokenExchange"]
+#   issuer                = azurerm_kubernetes_cluster.default.oidc_issuer_url
+#   subject               = "system:serviceaccount:${local.aks_namespace}:${local.service_account_name}"
+# }
+
+### Managed Identity
+
+resource "azurerm_user_assigned_identity" "default" {
+  name = "aks-identity"
+  resource_group_name = azurerm_resource_group.default.name
+  location = azurerm_resource_group.default.location
 }
 
-resource "azuread_service_principal" "default" {
-  application_id               = azuread_application.default.application_id
-  app_role_assignment_required = false
+resource "azurerm_federated_identity_credential" "default" {
+  name = "kubernetes-federated-credential"
+  resource_group_name = azurerm_resource_group.default.name
+  audience = ["api://AzureADTokenExchange"]
+  issuer = azurerm_kubernetes_cluster.default.oidc_issuer_url
+  subject = "system:serviceaccount:${local.aks_namespace}:${local.service_account_name}"
+  parent_id = azurerm_user_assigned_identity.default.id
 }
-
-resource "azuread_application_federated_identity_credential" "default" {
-  application_object_id = azuread_application.default.object_id
-  display_name          = "kubernetes-federated-credential"
-  description           = "Kubernetes service account federated credential"
-  audiences             = ["api://AzureADTokenExchange"]
-  issuer                = azurerm_kubernetes_cluster.default.oidc_issuer_url
-  subject               = "system:serviceaccount:${local.aks_namespace}:${local.service_account_name}"
-}
-
 
 ### Key Vault
 
@@ -130,7 +147,7 @@ resource "azurerm_key_vault_access_policy" "aks" {
   key_vault_id = azurerm_key_vault.default.id
 
   tenant_id = data.azurerm_client_config.current.tenant_id
-  object_id = azuread_service_principal.default.object_id
+  object_id = azurerm_user_assigned_identity.default.principal_id
 
   secret_permissions = [
     "Get"

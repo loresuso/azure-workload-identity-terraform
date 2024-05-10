@@ -11,4 +11,4 @@ app_name = "awi-quikstrt9999"
 
 
 ### Kubernetes Module Variables ###
-# container_image = "ghcr.io/azure/azure-workload-identity/msal-python"
+container_image = "ghcr.io/azure/azure-workload-identity/msal-go"
